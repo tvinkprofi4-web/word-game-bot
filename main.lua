@@ -1,8 +1,24 @@
 -- ================================================================
---  «Игра в Слова» [Roblox] — Auto-Typer v11 (Precision Fix)
+--  «Игра в Слова» [Roblox] — Auto-Typer v12 (Ultimate Master)
 --  GitHub: https://github.com/tvinkprofi4-web/word-game-bot
---  Бинды: Q или F2 (или клик по зеленой полосе вверху)
 -- ================================================================
+
+-- ── 1. ЗАЩИТА ОТ ПОВТОРНОГО ЗАПУСКА (Убиваем все старые копии) ──
+if _G.WordBotConnection then
+    pcall(function() _G.WordBotConnection:Disconnect() end)
+    _G.WordBotConnection = nil
+end
+if _G.WordBotGui then
+    pcall(function() _G.WordBotGui:Destroy() end)
+    _G.WordBotGui = nil
+end
+
+-- Генерируем уникальный токен этого запуска
+_G.WordBotToken = (_G.WordBotToken or 0) + 1
+local myToken = _G.WordBotToken
+
+-- Глобальный мьютекс печати
+_G.WordBotGlobalTyping = false
 
 local Players   = game:GetService("Players")
 local UIS       = game:GetService("UserInputService")
@@ -65,27 +81,28 @@ RAW = nil
 _G.WordBotHistory = _G.WordBotHistory or {}
 local history = _G.WordBotHistory
 
--- Удаляем старый UI
+-- ── 2. ЧИСТЫЙ И КРАСИВЫЙ ИНТЕРФЕЙС ──
 pcall(function()
-    local old = PlayerGui:FindFirstChild("WordGameIndicatorV10")
-    if old then old:Destroy() end
-    local old2 = PlayerGui:FindFirstChild("WordGameIndicatorV11")
-    if old2 then old2:Destroy() end
+    for _, name in ipairs({"WordGameIndicatorV10", "WordGameIndicatorV11", "WordGameIndicatorV12"}) do
+        local old = PlayerGui:FindFirstChild(name)
+        if old then old:Destroy() end
+    end
 end)
 
 local sg = Instance.new("ScreenGui")
-sg.Name = "WordGameIndicatorV11"
+sg.Name = "WordGameIndicatorV12"
 sg.ResetOnSpawn = false
 sg.Parent = PlayerGui
+_G.WordBotGui = sg
 
 local statusBtn = Instance.new("TextButton")
-statusBtn.Size = UDim2.new(0, 460, 0, 36)
-statusBtn.Position = UDim2.new(0.5, -230, 0, 10)
+statusBtn.Size = UDim2.new(0, 480, 0, 36)
+statusBtn.Position = UDim2.new(0.5, -240, 0, 10)
 statusBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 statusBtn.TextColor3 = Color3.fromRGB(80, 255, 120)
 statusBtn.Font = Enum.Font.GothamBold
 statusBtn.TextSize = 13
-statusBtn.Text = "WordBot v11: ГОТОВ [Кликни или жми Q / F2 для ответа]"
+statusBtn.Text = "WordBot v12: ГОТОВ [Жми Q / F2 или кликай сюда]"
 statusBtn.Parent = sg
 local uic = Instance.new("UICorner", statusBtn)
 uic.CornerRadius = UDim.new(0, 8)
@@ -118,12 +135,12 @@ local function getTypingBox()
     return nil
 end
 
--- НАИБОЛЕЕ ТОЧНЫЙ ЗАХВАТ АКТИВНОЙ БУКВЫ РАУНДА
+-- ── 3. ТОЧНЫЙ ЗАХВАТ БУКВЫ РАУНДА ──
 local function getActiveLetter()
     local wgui = PlayerGui:FindFirstChild("WordGameUI")
     if not wgui then return nil end
 
-    -- Способ 1: Ищем заголовок "Напиши слово на букву" -> рядом с ним TextLabel "Glyph"
+    -- Способ 1: Ищем заголовок "Напиши слово на букву" -> рядом TextLabel с буквой
     for _, heading in ipairs(wgui:GetDescendants()) do
         if heading:IsA("TextLabel") and heading.Visible then
             local t = heading.Text or ""
@@ -144,21 +161,19 @@ local function getActiveLetter()
         end
     end
 
-    -- Способ 2: Ищем белую центральную плитку прямо над персонажем (в верхней части экрана)
+    -- Способ 2: Центральная плитка над головой
     local screenCenter = Camera.ViewportSize.X / 2
     local bestChar, minDistance = nil, 999999
     for _, obj in ipairs(wgui:GetDescendants()) do
         pcall(function()
             if obj:IsA("TextLabel") and obj.Visible then
                 local n = obj.Name
-                -- Пропускаем заголовки, статусы, таймеры
                 if n == "Glyph" or (n ~= "Heading" and n ~= "Title" and n ~= "Label" and n ~= "HeavyFill" and n ~= "Letter") then
                     local s = obj.Text:gsub("%s+", "")
                     local ch = utf8chars(s)
                     if #ch == 1 and toCyr(ch[1]) then
                         local posX = obj.AbsolutePosition.X + obj.AbsoluteSize.X / 2
                         local posY = obj.AbsolutePosition.Y
-                        -- Должна быть строго вверху по центру (над головой персонажа)
                         if posY > 50 and posY < Camera.ViewportSize.Y * 0.45 then
                             local dist = math.abs(posX - screenCenter)
                             if dist < minDistance then
@@ -175,7 +190,7 @@ local function getActiveLetter()
     return bestChar
 end
 
--- Подбор слова без повторений
+-- ── 4. ПОДБОР СЛОВА (БЕЗ ПОВТОРОВ) ──
 local function pickWord(letter)
     local pool = DICT[letter]
     if not pool or #pool == 0 then return nil end
@@ -200,13 +215,18 @@ local function pickWord(letter)
     return chosen
 end
 
-local isTyping = false
+-- ── 5. АТОМАРНЫЙ ВВОД (Защита от спутывания букв) ──
 local lastTypeTime = 0
 
 local function doAutoAnswer()
-    if isTyping and (tick() - lastTypeTime > 3.5) then isTyping = false end
-    if isTyping then return end
-    isTyping = true
+    -- Проверка на старую копию скрипта
+    if _G.WordBotToken ~= myToken then return end
+
+    -- Глобальная защита от двойного нажатия / одновременной печати
+    if _G.WordBotGlobalTyping and (tick() - lastTypeTime < 3.0) then
+        return
+    end
+    _G.WordBotGlobalTyping = true
     lastTypeTime = tick()
 
     local success, err = pcall(function()
@@ -218,7 +238,7 @@ local function doAutoAnswer()
 
         local myLetter = getActiveLetter()
         if not myLetter then
-            showStatus("Буква раунда не найдена! Встань за стол.", true)
+            showStatus("Буква раунда не найдена! Сядь за стол.", true)
             return
         end
 
@@ -230,29 +250,33 @@ local function doAutoAnswer()
 
         showStatus("Буква: [" .. myLetter .. "] -> Слово: " .. word .. "...")
 
-        -- ВАЖНЕЙШИЙ МОМЕНТ:
-        -- Если игрок нажал Q на русской раскладке, в поле ввода УЖЕ напечаталась буква 'й'!
-        -- Очищаем поле ввода ДО и ПОСЛЕ активации фокуса:
+        -- Тщательная очистка поля ввода перед стартом
         tb:CaptureFocus()
         tb.Text = ""
         task.wait(0.08)
         tb.Text = ""
 
-        -- Отрезаем первую букву слова (т.к. игра сама держит первую букву в 1-й плитке!)
+        -- Отрезаем первую букву (игра сама держит первую букву в плитке 1!)
         local chars = utf8chars(word)
         local tail = {}
         for i = 2, #chars do table.insert(tail, chars[i]) end
 
-        -- Печатаем чистый остаток слова
-        local totalTime = 1.0 + math.random() * 0.4
+        -- Абсолютная защита: собираем строку в буфере и перезаписываем целиком
+        -- Никаких склеек двух копий скрипта!
+        local currentBuffer = ""
+        local totalTime = 1.0 + math.random() * 0.35
         local perChar = totalTime / math.max(#tail, 1)
+
         for _, c in ipairs(tail) do
-            tb.Text = tb.Text .. string.lower(c)
+            -- Если запустили новую копию скрипта — мгновенно прерываем старую
+            if _G.WordBotToken ~= myToken then return end
+
+            currentBuffer = currentBuffer .. string.lower(c)
+            tb.Text = currentBuffer
             task.wait(perChar + (math.random() - 0.5) * perChar * 0.2)
         end
 
         task.wait(0.06)
-        -- Отправляем слово
         tb:ReleaseFocus(true)
         pcall(function()
             if typeof(keypress) == "function" then
@@ -265,17 +289,18 @@ local function doAutoAnswer()
         showStatus("Отправлено: " .. word .. " | Слов в истории: " .. tostring(countHistory()))
     end)
 
-    isTyping = false
+    _G.WordBotGlobalTyping = false
     if not success then
         showStatus("Ошибка: " .. tostring(err):sub(1, 35), true)
     end
 end
 
--- 1. Клик мышкой по кнопке
+-- Клик мышкой
 statusBtn.MouseButton1Click:Connect(doAutoAnswer)
 
--- 2. Клавиши Q или F2
-UIS.InputBegan:Connect(function(input)
+-- Клавиши Q или F2
+_G.WordBotConnection = UIS.InputBegan:Connect(function(input)
+    if _G.WordBotToken ~= myToken then return end
     if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.F2 then
         doAutoAnswer()
     elseif input.KeyCode == Enum.KeyCode.R and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -285,4 +310,4 @@ UIS.InputBegan:Connect(function(input)
     end
 end)
 
-print("[WordGameBot v11] Успешно загружен! Жми Q / F2 или кликай по кнопке вверху.")
+print("[WordGameBot v12] Загружен! Защита от двойного запуска АКТИВНА.")
