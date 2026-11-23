@@ -1,16 +1,15 @@
 -- ================================================================
---  «Игра в Слова» [Roblox] — Auto-Typer v10 (Global Fix)
+--  «Игра в Слова» [Roblox] — Auto-Typer v11 (Precision Fix)
 --  GitHub: https://github.com/tvinkprofi4-web/word-game-bot
+--  Бинды: Q или F2 (или клик по зеленой полосе вверху)
 -- ================================================================
 
 local Players   = game:GetService("Players")
 local UIS       = game:GetService("UserInputService")
--- VIM removed for 100% stability (anti-crash)
 local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
 
--- Таблица букв
 local CYR = {
     ["А"]="А",["Б"]="Б",["В"]="В",["Г"]="Г",["Д"]="Д",["Е"]="Е",["Ё"]="Ё",["Ж"]="Ж",
     ["З"]="З",["И"]="И",["Й"]="Й",["К"]="К",["Л"]="Л",["М"]="М",["Н"]="Н",["О"]="О",
@@ -63,29 +62,30 @@ for letter, str in pairs(RAW) do
 end
 RAW = nil
 
--- Глобальная история использованных слов (НИКОГДА не повторяются)
 _G.WordBotHistory = _G.WordBotHistory or {}
 local history = _G.WordBotHistory
 
--- Безопасный статус-бар в PlayerGui (не CoreGui, чтоб не крашило Byfron!)
+-- Удаляем старый UI
 pcall(function()
     local old = PlayerGui:FindFirstChild("WordGameIndicatorV10")
     if old then old:Destroy() end
+    local old2 = PlayerGui:FindFirstChild("WordGameIndicatorV11")
+    if old2 then old2:Destroy() end
 end)
 
 local sg = Instance.new("ScreenGui")
-sg.Name = "WordGameIndicatorV10"
+sg.Name = "WordGameIndicatorV11"
 sg.ResetOnSpawn = false
 sg.Parent = PlayerGui
 
 local statusBtn = Instance.new("TextButton")
-statusBtn.Size = UDim2.new(0, 440, 0, 36)
-statusBtn.Position = UDim2.new(0.5, -220, 0, 10)
+statusBtn.Size = UDim2.new(0, 460, 0, 36)
+statusBtn.Position = UDim2.new(0.5, -230, 0, 10)
 statusBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 statusBtn.TextColor3 = Color3.fromRGB(80, 255, 120)
 statusBtn.Font = Enum.Font.GothamBold
 statusBtn.TextSize = 13
-statusBtn.Text = "WordBot: ГОТОВ [Кликни или жми Q для ответа]"
+statusBtn.Text = "WordBot v11: ГОТОВ [Кликни или жми Q / F2 для ответа]"
 statusBtn.Parent = sg
 local uic = Instance.new("UICorner", statusBtn)
 uic.CornerRadius = UDim.new(0, 8)
@@ -109,7 +109,6 @@ local function utf8chars(s)
     return t
 end
 
--- Поиск поля ввода TypingCapture
 local function getTypingBox()
     local wgui = PlayerGui:FindFirstChild("WordGameUI")
     if not wgui then return nil end
@@ -119,43 +118,49 @@ local function getTypingBox()
     return nil
 end
 
--- ТОЧНЕЙШИЙ ЗАХВАТ БУКВЫ ЛОКАЛЬНОГО ИГРОКА (Игнорирует противника!)
-local function getMyLetter()
+-- НАИБОЛЕЕ ТОЧНЫЙ ЗАХВАТ АКТИВНОЙ БУКВЫ РАУНДА
+local function getActiveLetter()
     local wgui = PlayerGui:FindFirstChild("WordGameUI")
     if not wgui then return nil end
 
-    -- Способ 1: Первая плитка ввода на столе игрока
-    local firstTileLetter = nil
-    for _, obj in ipairs(wgui:GetDescendants()) do
-        if obj:IsA("TextLabel") and obj.Visible and obj.Name == "Letter" then
-            local t = obj.Text:gsub("%s+", "")
-            local ch = utf8chars(t)
-            if #ch == 1 and toCyr(ch[1]) and ch[1] ~= "×" and ch[1] ~= "X" and ch[1] ~= "x" then
-                firstTileLetter = toCyr(ch[1])
-                break
+    -- Способ 1: Ищем заголовок "Напиши слово на букву" -> рядом с ним TextLabel "Glyph"
+    for _, heading in ipairs(wgui:GetDescendants()) do
+        if heading:IsA("TextLabel") and heading.Visible then
+            local t = heading.Text or ""
+            if t:find("Напиши слово") or t:find("слово на") then
+                local parent = heading.Parent
+                if parent then
+                    for _, child in ipairs(parent:GetDescendants()) do
+                        if child:IsA("TextLabel") and child.Visible and child ~= heading then
+                            local s = child.Text:gsub("%s+", "")
+                            local ch = utf8chars(s)
+                            if #ch == 1 and toCyr(ch[1]) then
+                                return toCyr(ch[1])
+                            end
+                        end
+                    end
+                end
             end
         end
     end
 
-    -- Способ 2: Плитка раунда строго НАД ГОЛОВОЙ локального игрока (центр экрана)
-    -- Противник находится сбоку, поэтому выбираем плитку с МИНИМАЛЬНЫМ расстоянием до центра
+    -- Способ 2: Ищем белую центральную плитку прямо над персонажем (в верхней части экрана)
     local screenCenter = Camera.ViewportSize.X / 2
     local bestChar, minDistance = nil, 999999
-
     for _, obj in ipairs(wgui:GetDescendants()) do
         pcall(function()
             if obj:IsA("TextLabel") and obj.Visible then
                 local n = obj.Name
-                if n ~= "Heading" and n ~= "Title" and n ~= "Label" and n ~= "HeavyFill" and n ~= "Letter" then
-                    local t = obj.Text:gsub("%s+", "")
-                    local ch = utf8chars(t)
+                -- Пропускаем заголовки, статусы, таймеры
+                if n == "Glyph" or (n ~= "Heading" and n ~= "Title" and n ~= "Label" and n ~= "HeavyFill" and n ~= "Letter") then
+                    local s = obj.Text:gsub("%s+", "")
+                    local ch = utf8chars(s)
                     if #ch == 1 and toCyr(ch[1]) then
                         local posX = obj.AbsolutePosition.X + obj.AbsoluteSize.X / 2
                         local posY = obj.AbsolutePosition.Y
-                        -- Плитка должна быть в верхней/центральной части экрана
-                        if posY < Camera.ViewportSize.Y * 0.65 then
+                        -- Должна быть строго вверху по центру (над головой персонажа)
+                        if posY > 50 and posY < Camera.ViewportSize.Y * 0.45 then
                             local dist = math.abs(posX - screenCenter)
-                            -- Берём самую центральную (нашу) плитку
                             if dist < minDistance then
                                 minDistance = dist
                                 bestChar = toCyr(ch[1])
@@ -167,9 +172,6 @@ local function getMyLetter()
         end)
     end
 
-    -- Если нашли в плитке ввода — это 100% наша буква
-    if firstTileLetter then return firstTileLetter end
-    -- Иначе берём самую центральную плитку над головой
     return bestChar
 end
 
@@ -178,45 +180,45 @@ local function pickWord(letter)
     local pool = DICT[letter]
     if not pool or #pool == 0 then return nil end
 
-    -- Отбираем неиспользованные слова
     local unused = {}
     for _, w in ipairs(pool) do
         if not history[w] then table.insert(unused, w) end
     end
 
-    -- Если все слова на эту букву уже названы — сбрасываем историю для этой буквы
     if #unused == 0 then
         for _, w in ipairs(pool) do history[w] = nil end
         unused = pool
     end
 
-    -- Сортируем по длине (самые длинные в начале)
     table.sort(unused, function(a, b)
         return #utf8chars(a) > #utf8chars(b)
     end)
 
-    -- Выбираем случайное из топа длинных
     local topN = math.min(#unused, 3)
     local chosen = unused[math.random(1, topN)]
     history[chosen] = true
     return chosen
 end
 
--- Блокировка от повторного нажатия во время ввода
 local isTyping = false
 local lastTypeTime = 0
 
 local function doAutoAnswer()
-    -- Защита от зависания: если прошло больше 3.5 сек, сбрасываем флаг
     if isTyping and (tick() - lastTypeTime > 3.5) then isTyping = false end
     if isTyping then return end
     isTyping = true
     lastTypeTime = tick()
 
     local success, err = pcall(function()
-        local myLetter = getMyLetter()
+        local tb = getTypingBox()
+        if not tb then
+            showStatus("Поле ввода TypingCapture не найдено!", true)
+            return
+        end
+
+        local myLetter = getActiveLetter()
         if not myLetter then
-            showStatus("Твоя буква не найдена! Сядь за стол.", true)
+            showStatus("Буква раунда не найдена! Встань за стол.", true)
             return
         end
 
@@ -226,37 +228,35 @@ local function doAutoAnswer()
             return
         end
 
-        local tb = getTypingBox()
-        if not tb then
-            showStatus("Поле ввода TypingCapture не найдено!", true)
-            return
-        end
-
         showStatus("Буква: [" .. myLetter .. "] -> Слово: " .. word .. "...")
 
-        -- Отрезаем первую букву, т.к. игра УЖЕ поставила её в первую плитку!
+        -- ВАЖНЕЙШИЙ МОМЕНТ:
+        -- Если игрок нажал Q на русской раскладке, в поле ввода УЖЕ напечаталась буква 'й'!
+        -- Очищаем поле ввода ДО и ПОСЛЕ активации фокуса:
+        tb:CaptureFocus()
+        tb.Text = ""
+        task.wait(0.08)
+        tb.Text = ""
+
+        -- Отрезаем первую букву слова (т.к. игра сама держит первую букву в 1-й плитке!)
         local chars = utf8chars(word)
         local tail = {}
         for i = 2, #chars do table.insert(tail, chars[i]) end
 
-        tb:CaptureFocus()
-        tb.Text = ""
-        task.wait(0.06)
-
-        -- Плавный набор (~1.2 - 1.8 сек)
-        local totalTime = 1.1 + math.random() * 0.5
+        -- Печатаем чистый остаток слова
+        local totalTime = 1.0 + math.random() * 0.4
         local perChar = totalTime / math.max(#tail, 1)
         for _, c in ipairs(tail) do
             tb.Text = tb.Text .. string.lower(c)
-            task.wait(perChar + (math.random() - 0.5) * perChar * 0.25)
+            task.wait(perChar + (math.random() - 0.5) * perChar * 0.2)
         end
 
         task.wait(0.06)
-        -- Нативная отправка слова без VirtualInputManager (защита от краша Byfron!)
+        -- Отправляем слово
         tb:ReleaseFocus(true)
         pcall(function()
             if typeof(keypress) == "function" then
-                keypress(0x0D) -- Enter
+                keypress(0x0D)
                 task.wait(0.03)
                 keyrelease(0x0D)
             end
@@ -271,11 +271,11 @@ local function doAutoAnswer()
     end
 end
 
--- 1. Клик по кнопке всегда работает
+-- 1. Клик мышкой по кнопке
 statusBtn.MouseButton1Click:Connect(doAutoAnswer)
 
--- 2. Нажатие Q или F2 (БЕЗ проверки gp, чтобы срабатывало ВСЕГДА, даже если поле ввода в фокусе!)
-UIS.InputBegan:Connect(function(input, _)
+-- 2. Клавиши Q или F2
+UIS.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.F2 then
         doAutoAnswer()
     elseif input.KeyCode == Enum.KeyCode.R and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
@@ -285,4 +285,4 @@ UIS.InputBegan:Connect(function(input, _)
     end
 end)
 
-print("[WordGameBot v10] Успешно загружен! Жми Q или кликай по полосе вверху.")
+print("[WordGameBot v11] Успешно загружен! Жми Q / F2 или кликай по кнопке вверху.")
