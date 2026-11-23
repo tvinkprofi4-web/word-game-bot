@@ -5,7 +5,7 @@
 
 local Players   = game:GetService("Players")
 local UIS       = game:GetService("UserInputService")
-local VIM       = game:GetService("VirtualInputManager")
+-- VIM removed for 100% stability (anti-crash)
 local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
@@ -251,13 +251,16 @@ local function doAutoAnswer()
             task.wait(perChar + (math.random() - 0.5) * perChar * 0.25)
         end
 
-        task.wait(0.08)
+        task.wait(0.06)
+        -- Нативная отправка слова без VirtualInputManager (защита от краша Byfron!)
         tb:ReleaseFocus(true)
-
-        -- Отправка через Enter
-        VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
-        task.wait(0.04)
-        VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+        pcall(function()
+            if typeof(keypress) == "function" then
+                keypress(0x0D) -- Enter
+                task.wait(0.03)
+                keyrelease(0x0D)
+            end
+        end)
 
         showStatus("Отправлено: " .. word .. " | Слов в истории: " .. tostring(countHistory()))
     end)
