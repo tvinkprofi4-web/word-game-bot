@@ -1,9 +1,10 @@
 -- ================================================================
---  «Игра в Слова» [Roblox] — Auto-Typer v12 (Ultimate Master)
+--  «Игра в Слова» [Roblox] — Universal Auto-Typer (PC + Mobile / ТФ)
 --  GitHub: https://github.com/tvinkprofi4-web/word-game-bot
+--  Поддерживает: ПК (Q / F2) и ТЕЛЕФОНЫ (плавающая сенсорная кнопка)
 -- ================================================================
 
--- ── 1. ЗАЩИТА ОТ ПОВТОРНОГО ЗАПУСКА (Убиваем все старые копии) ──
+-- ── 1. ЗАЩИТА ОТ ДВОЙНОГО ЗАПУСКА ──
 if _G.WordBotConnection then
     pcall(function() _G.WordBotConnection:Disconnect() end)
     _G.WordBotConnection = nil
@@ -13,11 +14,8 @@ if _G.WordBotGui then
     _G.WordBotGui = nil
 end
 
--- Генерируем уникальный токен этого запуска
 _G.WordBotToken = (_G.WordBotToken or 0) + 1
 local myToken = _G.WordBotToken
-
--- Глобальный мьютекс печати
 _G.WordBotGlobalTyping = false
 
 local Players   = game:GetService("Players")
@@ -26,6 +24,9 @@ local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
 
+local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
+
+-- Таблица русских букв
 local CYR = {
     ["А"]="А",["Б"]="Б",["В"]="В",["Г"]="Г",["Д"]="Д",["Е"]="Е",["Ё"]="Ё",["Ж"]="Ж",
     ["З"]="З",["И"]="И",["Й"]="Й",["К"]="К",["Л"]="Л",["М"]="М",["Н"]="Н",["О"]="О",
@@ -81,43 +82,10 @@ RAW = nil
 _G.WordBotHistory = _G.WordBotHistory or {}
 local history = _G.WordBotHistory
 
--- ── 2. ЧИСТЫЙ И КРАСИВЫЙ ИНТЕРФЕЙС ──
-pcall(function()
-    for _, name in ipairs({"WordGameIndicatorV10", "WordGameIndicatorV11", "WordGameIndicatorV12"}) do
-        local old = PlayerGui:FindFirstChild(name)
-        if old then old:Destroy() end
-    end
-end)
-
-local sg = Instance.new("ScreenGui")
-sg.Name = "WordGameIndicatorV12"
-sg.ResetOnSpawn = false
-sg.Parent = PlayerGui
-_G.WordBotGui = sg
-
-local statusBtn = Instance.new("TextButton")
-statusBtn.Size = UDim2.new(0, 480, 0, 36)
-statusBtn.Position = UDim2.new(0.5, -240, 0, 10)
-statusBtn.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
-statusBtn.TextColor3 = Color3.fromRGB(80, 255, 120)
-statusBtn.Font = Enum.Font.GothamBold
-statusBtn.TextSize = 13
-statusBtn.Text = "WordBot v12: ГОТОВ [Жми Q / F2 или кликай сюда]"
-statusBtn.Parent = sg
-local uic = Instance.new("UICorner", statusBtn)
-uic.CornerRadius = UDim.new(0, 8)
-local uis = Instance.new("UIStroke", statusBtn)
-uis.Color = Color3.fromRGB(60, 65, 80)
-
 local function countHistory()
     local c = 0
     for _ in pairs(history) do c = c + 1 end
     return c
-end
-
-local function showStatus(txt, isErr)
-    statusBtn.Text = txt
-    statusBtn.TextColor3 = isErr and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 120)
 end
 
 local function utf8chars(s)
@@ -126,6 +94,105 @@ local function utf8chars(s)
     return t
 end
 
+-- ── 2. УНИВЕРСАЛЬНЫЙ МОБИЛЬНЫЙ + ПК ИНТЕРФЕЙС (Плавающий и перетаскиваемый) ──
+pcall(function()
+    for _, name in ipairs({"WordGameIndicatorV10", "WordGameIndicatorV11", "WordGameIndicatorV12", "WordGameUniversalGUI"}) do
+        local old = PlayerGui:FindFirstChild(name)
+        if old then old:Destroy() end
+    end
+end)
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "WordGameUniversalGUI"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = PlayerGui
+_G.WordBotGui = sg
+
+-- Основной перетаскиваемый фрейм
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainWidget"
+-- Для телефона делаем удобный размер, по умолчанию справа вверху
+mainFrame.Size = UDim2.new(0, isMobile and 300 or 440, 0, isMobile and 46 or 40)
+mainFrame.Position = isMobile and UDim2.new(0.5, -150, 0, 15) or UDim2.new(0.5, -220, 0, 10)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Parent = sg
+
+local mfCorner = Instance.new("UICorner", mainFrame)
+mfCorner.CornerRadius = UDim.new(0, 10)
+local mfStroke = Instance.new("UIStroke", mainFrame)
+mfStroke.Color = Color3.fromRGB(60, 68, 85)
+mfStroke.Thickness = 1.5
+
+-- Кнопка сброса (слева)
+local resetBtn = Instance.new("TextButton")
+resetBtn.Name = "ResetBtn"
+resetBtn.Size = UDim2.new(0, isMobile and 40 or 34, 1, -8)
+resetBtn.Position = UDim2.new(0, 4, 0, 4)
+resetBtn.BackgroundColor3 = Color3.fromRGB(30, 34, 44)
+resetBtn.TextColor3 = Color3.fromRGB(200, 210, 230)
+resetBtn.Font = Enum.Font.GothamBold
+resetBtn.TextSize = isMobile and 16 or 14
+resetBtn.Text = "🔄"
+resetBtn.Parent = mainFrame
+local rbCorner = Instance.new("UICorner", resetBtn)
+rbCorner.CornerRadius = UDim.new(0, 8)
+
+-- Главная кнопка-статус "ОТВЕТИТЬ"
+local actionBtn = Instance.new("TextButton")
+actionBtn.Name = "ActionBtn"
+actionBtn.Size = UDim2.new(1, isMobile and -52 or -46, 1, -8)
+actionBtn.Position = UDim2.new(0, isMobile and 48 or 42, 0, 4)
+actionBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
+actionBtn.TextColor3 = Color3.fromRGB(80, 255, 130)
+actionBtn.Font = Enum.Font.GothamBold
+actionBtn.TextSize = isMobile and 12 or 13
+actionBtn.Text = isMobile and "⚡ НАЖМИ ДЛЯ ОТВЕТА" or "WordBot: ГОТОВ [Кликни или жми Q / F2]"
+actionBtn.Parent = mainFrame
+local abCorner = Instance.new("UICorner", actionBtn)
+abCorner.CornerRadius = UDim.new(0, 8)
+
+-- Перетаскивание виджета пальцем (на ТФ) или мышкой (на ПК)
+local dragging, dragInput, dragStart, startPos
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+local function showStatus(txt, isErr)
+    actionBtn.Text = txt
+    actionBtn.TextColor3 = isErr and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(80, 255, 130)
+end
+
+-- ── 3. ПОИСК ПОЛЯ ВВОДА (TypingCapture) ──
 local function getTypingBox()
     local wgui = PlayerGui:FindFirstChild("WordGameUI")
     if not wgui then return nil end
@@ -135,12 +202,12 @@ local function getTypingBox()
     return nil
 end
 
--- ── 3. ТОЧНЫЙ ЗАХВАТ БУКВЫ РАУНДА ──
+-- ── 4. АБСОЛЮТНОЕ РАСПОЗНАВАНИЕ БУКВЫ (ПК + ТЕЛЕФОН) ──
 local function getActiveLetter()
     local wgui = PlayerGui:FindFirstChild("WordGameUI")
     if not wgui then return nil end
 
-    -- Способ 1: Ищем заголовок "Напиши слово на букву" -> рядом TextLabel с буквой
+    -- Способ 1: Прямо из баннера текущего задания "Напиши слово на букву…"
     for _, heading in ipairs(wgui:GetDescendants()) do
         if heading:IsA("TextLabel") and heading.Visible then
             local t = heading.Text or ""
@@ -161,9 +228,10 @@ local function getActiveLetter()
         end
     end
 
-    -- Способ 2: Центральная плитка над головой
+    -- Способ 2: Центральная плитка на экране (адаптировано под любые разрешения экранов телефонов)
     local screenCenter = Camera.ViewportSize.X / 2
     local bestChar, minDistance = nil, 999999
+
     for _, obj in ipairs(wgui:GetDescendants()) do
         pcall(function()
             if obj:IsA("TextLabel") and obj.Visible then
@@ -174,7 +242,8 @@ local function getActiveLetter()
                     if #ch == 1 and toCyr(ch[1]) then
                         local posX = obj.AbsolutePosition.X + obj.AbsoluteSize.X / 2
                         local posY = obj.AbsolutePosition.Y
-                        if posY > 50 and posY < Camera.ViewportSize.Y * 0.45 then
+                        -- Верхняя часть экрана (выше стола)
+                        if posY > 40 and posY < Camera.ViewportSize.Y * 0.5 then
                             local dist = math.abs(posX - screenCenter)
                             if dist < minDistance then
                                 minDistance = dist
@@ -190,7 +259,7 @@ local function getActiveLetter()
     return bestChar
 end
 
--- ── 4. ПОДБОР СЛОВА (БЕЗ ПОВТОРОВ) ──
+-- ── 5. ПОДБОР СЛОВА БЕЗ ПОВТОРОВ ──
 local function pickWord(letter)
     local pool = DICT[letter]
     if not pool or #pool == 0 then return nil end
@@ -215,68 +284,62 @@ local function pickWord(letter)
     return chosen
 end
 
--- ── 5. АТОМАРНЫЙ ВВОД (Защита от спутывания букв) ──
+-- ── 6. АВТОМАТИЧЕСКИЙ ВВОД ──
 local lastTypeTime = 0
 
 local function doAutoAnswer()
-    -- Проверка на старую копию скрипта
     if _G.WordBotToken ~= myToken then return end
 
-    -- Глобальная защита от двойного нажатия / одновременной печати
-    if _G.WordBotGlobalTyping and (tick() - lastTypeTime < 3.0) then
-        return
-    end
+    if _G.WordBotGlobalTyping and (tick() - lastTypeTime < 3.0) then return end
     _G.WordBotGlobalTyping = true
     lastTypeTime = tick()
 
     local success, err = pcall(function()
         local tb = getTypingBox()
         if not tb then
-            showStatus("Поле ввода TypingCapture не найдено!", true)
+            showStatus("Сядь за стол (нет поля ввода)!", true)
             return
         end
 
         local myLetter = getActiveLetter()
         if not myLetter then
-            showStatus("Буква раунда не найдена! Сядь за стол.", true)
+            showStatus("Буква не найдена! Подожди свой ход.", true)
             return
         end
 
         local word = pickWord(myLetter)
         if not word then
-            showStatus("Нет слов на букву: " .. myLetter, true)
+            showStatus("Нет слов на: " .. myLetter, true)
             return
         end
 
-        showStatus("Буква: [" .. myLetter .. "] -> Слово: " .. word .. "...")
+        showStatus("Буква [" .. myLetter .. "] -> " .. word .. "...")
 
-        -- Тщательная очистка поля ввода перед стартом
+        -- Очистка от случайных нажатий (в т.ч. 'й' от Q на русской раскладке)
         tb:CaptureFocus()
         tb.Text = ""
         task.wait(0.08)
         tb.Text = ""
 
-        -- Отрезаем первую букву (игра сама держит первую букву в плитке 1!)
+        -- Отрезаем 1-ю букву слова, т.к. игра УЖЕ держит её в первой ячейке!
         local chars = utf8chars(word)
         local tail = {}
         for i = 2, #chars do table.insert(tail, chars[i]) end
 
-        -- Абсолютная защита: собираем строку в буфере и перезаписываем целиком
-        -- Никаких склеек двух копий скрипта!
+        -- Безопасная буферизованная печать
         local currentBuffer = ""
-        local totalTime = 1.0 + math.random() * 0.35
+        local totalTime = isMobile and 0.8 or (1.0 + math.random() * 0.3)
         local perChar = totalTime / math.max(#tail, 1)
 
         for _, c in ipairs(tail) do
-            -- Если запустили новую копию скрипта — мгновенно прерываем старую
             if _G.WordBotToken ~= myToken then return end
-
             currentBuffer = currentBuffer .. string.lower(c)
             tb.Text = currentBuffer
             task.wait(perChar + (math.random() - 0.5) * perChar * 0.2)
         end
 
         task.wait(0.06)
+        -- Отправка слова в игру
         tb:ReleaseFocus(true)
         pcall(function()
             if typeof(keypress) == "function" then
@@ -286,19 +349,26 @@ local function doAutoAnswer()
             end
         end)
 
-        showStatus("Отправлено: " .. word .. " | Слов в истории: " .. tostring(countHistory()))
+        showStatus("Отправлено: " .. word .. " (" .. tostring(countHistory()) .. ")")
     end)
 
     _G.WordBotGlobalTyping = false
     if not success then
-        showStatus("Ошибка: " .. tostring(err):sub(1, 35), true)
+        showStatus("Ошибка: " .. tostring(err):sub(1, 30), true)
     end
 end
 
--- Клик мышкой
-statusBtn.MouseButton1Click:Connect(doAutoAnswer)
+-- Клик / Тап по главной кнопке (работает на тачскрине телефона и мышкой на ПК)
+actionBtn.Activated:Connect(doAutoAnswer)
 
--- Клавиши Q или F2
+-- Клик / Тап по кнопке сброса истории
+resetBtn.Activated:Connect(function()
+    _G.WordBotHistory = {}
+    history = _G.WordBotHistory
+    showStatus("Память сброшена!")
+end)
+
+-- Клавиши на ПК: Q или F2 (и Ctrl+R для сброса)
 _G.WordBotConnection = UIS.InputBegan:Connect(function(input)
     if _G.WordBotToken ~= myToken then return end
     if input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.F2 then
@@ -306,8 +376,8 @@ _G.WordBotConnection = UIS.InputBegan:Connect(function(input)
     elseif input.KeyCode == Enum.KeyCode.R and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
         _G.WordBotHistory = {}
         history = _G.WordBotHistory
-        showStatus("Память слов очищена!")
+        showStatus("Память сброшена!")
     end
 end)
 
-print("[WordGameBot v12] Загружен! Защита от двойного запуска АКТИВНА.")
+print("[WordGameBot v13] Успешно запущен! Режим: " .. (isMobile and "ТЕЛЕФОН (Тачскрин)" or "ПК"))
