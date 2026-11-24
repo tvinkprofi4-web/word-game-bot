@@ -1,6 +1,6 @@
 -- ================================================================
---  «Игра в Слова» [Roblox] — Universal Auto-Typer v33 (PC + Mobile)
---  Реальный статус сервера | Вечный Blacklist | 5 GitHub баз | Авто 🤖
+--  «Игра в Слова» [Roblox] — Universal Auto-Typer v34 (PC + Mobile)
+--  База 450k+ слов (CP1251 + UTF-8) | 0% ошибок | Фикс управления ТФ
 -- ================================================================
 
 -- ── 1. ЗАЩИТА ОТ ДВОЙНОГО ЗАПУСКА ──
@@ -26,6 +26,7 @@ local profaneMode = false
 local PROFANE_WORDS = {}
 local BLACKLIST = {}
 local BLACKLIST_FILE = "WordBot_Blacklist.txt"
+local MAX_DICT_WORDS = 450000
 
 local function addConn(conn)
     table.insert(_G.WordBotConnections, conn)
@@ -41,7 +42,7 @@ local Camera          = workspace.CurrentCamera
 
 local isMobile = UIS.TouchEnabled and (not UIS.KeyboardEnabled or Camera.ViewportSize.X <= 950)
 
--- Таблицы кириллицы
+-- Таблицы кириллицы (UTF-8)
 local CYR_UP = {
     ["А"]="А",["Б"]="Б",["В"]="В",["Г"]="Г",["Д"]="Д",["Е"]="Е",["Ё"]="Ё",["Ж"]="Ж",
     ["З"]="З",["И"]="И",["Й"]="Й",["К"]="К",["Л"]="Л",["М"]="М",["Н"]="Н",["О"]="О",
@@ -60,6 +61,33 @@ local CYR_LOW = {
     ["Ч"]="ч",["Ш"]="ш",["Щ"]="щ",["Ъ"]="ъ",["Ы"]="ы",["Ь"]="ь",["Э"]="э",["Ю"]="ю",["Я"]="я"
 }
 
+-- Таблица CP1251 -> UTF-8 (верхний регистр) для огромной базы на 450k+ слов
+local CP1251_UP = {}
+do
+    local letters = {
+        "А","Б","В","Г","Д","Е","Ж","З","И","Й","К","Л","М","Н","О","П",
+        "Р","С","Т","У","Ф","Х","Ц","Ч","Ш","Щ","Ъ","Ы","Ь","Э","Ю","Я"
+    }
+    CP1251_UP[168] = "Ё"
+    CP1251_UP[184] = "Ё"
+    for i = 1, 32 do
+        CP1251_UP[191 + i] = letters[i]
+        CP1251_UP[223 + i] = letters[i]
+    end
+end
+
+local function cp1251ToUpperCyr(str)
+    local len = #str
+    if len < 3 or len > 24 then return nil end
+    local res = table.create(len)
+    for i = 1, len do
+        local u = CP1251_UP[string.byte(str, i)]
+        if not u then return nil end
+        res[i] = u
+    end
+    return table.concat(res)
+end
+
 local function utf8chars(s)
     local t = {}
     for _, code in utf8.codes(s) do
@@ -68,7 +96,6 @@ local function utf8chars(s)
     return t
 end
 
--- Быстрый парсер кириллицы (без лишних аллокаций при загрузке баз)
 local function toUpperCyr(str)
     if not str or str == "" then return nil end
     if str:find("[%z\1-\127]") then return nil end
@@ -108,16 +135,29 @@ local function isSitting()
     return hum.Sit == true or hum.SeatPart ~= nil
 end
 
--- ── ВЕЧНЫЙ ЧЁРНЫЙ СПИСОК (writefile / readfile) ──
+-- Восстановление сенсорного управления на ТФ после раунда
+local function restoreMobileControls()
+    if not isMobile then return end
+    pcall(function()
+        local focused = UIS:GetFocusedTextBox()
+        if focused then
+            focused:ReleaseFocus(false)
+        end
+        local touchGui = PlayerGui:FindFirstChild("TouchGui")
+        if touchGui then
+            touchGui.Enabled = true
+        end
+    end)
+end
+
+-- ── ВЕЧНЫЙ ЧЁРНЫЙ СПИСОК ──
 local function loadBlacklist()
     pcall(function()
         if typeof(isfile) == "function" and typeof(readfile) == "function" and isfile(BLACKLIST_FILE) then
             local data = readfile(BLACKLIST_FILE)
             for line in data:gmatch("[^\r\n]+") do
                 local up = toUpperCyr(line:gsub("^%s+", ""):gsub("%s+$", ""))
-                if up then
-                    BLACKLIST[up] = true
-                end
+                if up then BLACKLIST[up] = true end
             end
         end
     end)
@@ -131,9 +171,7 @@ local function addToBlacklist(word)
             appendfile(BLACKLIST_FILE, word .. "\n")
         elseif typeof(writefile) == "function" then
             local list = {}
-            for w in pairs(BLACKLIST) do
-                table.insert(list, w)
-            end
+            for w in pairs(BLACKLIST) do table.insert(list, w) end
             writefile(BLACKLIST_FILE, table.concat(list, "\n") .. "\n")
         end
     end)
@@ -141,7 +179,7 @@ end
 
 loadBlacklist()
 
--- ── 2. СЛОВАРЬ (ПОПУЛЯРНЫЕ + ОНЛАЙН-БАЗЫ) ──
+-- ── 2. СЛОВАРЬ (ПОПУЛЯРНЫЕ + ОНЛАЙН-БАЗЫ НА 450K+) ──
 local RAW = {
     ["Ё"]="ЁМКОСТЬ,ЁЖИК,ЁЛКА,ЁРШ,ЁЛОЧКА,ЁРШИК",
     ["А"]="АВТОМОБИЛЬ,АВТОБУС,АВТОРИТЕТ,АВТОМАТИКА,АВТОСТРАДА,АВАНГАРД,АВИАНОСЕЦ,АВИАЦИЯ,АПЕЛЬСИН,АПЛОДИСМЕНТЫ,АППАРАТ,АПТЕКАРЬ,АККУМУЛЯТОР,АКАДЕМИЯ,АКВАРИУМ,АККОРДЕОН,АКРОБАТ,АКТИВИСТ,АРИСТОКРАТ,АРХИТЕКТУРА,АРГУМЕНТ,АРТИЛЛЕРИСТ,АРХИВАТОР,АРХЕОЛОГ,АРБУЗ,АСТЕРОИД,АСТРОНАВТ,АСТРОНОМИЯ,АСПИРИН,АСФАЛЬТ,АДМИРАЛ,АДРЕСАТ,АДВОКАТ,АЛЬБАТРОС,АЛЬБОМ,АЛЮМИНИЙ,АНАНАС,АНАЛИЗАТОР,АНТЕННА,АНСАМБЛЬ,АТТРАКЦИОН,АТЛЕТИКА,АТМОСФЕРА,АУДИТОРИЯ,АЭРОПОРТ,АЭРОДРОМ,АМФИТЕАТР,АБРИКОС,АБСОЛЮТ,АГЕНТСТВО,АГРОНОМ,АДАПТЕР,АЛГОРИТМ,АЛФАВИТ,АМАЗОНКА,АМЕРИКАНЕЦ,АМФИБИЯ,АНЕКДОТ,АНОМАЛИЯ,АНТИЛОПА,АРСЕНАЛ,АРТИСТ,АССОРТИМЕНТ,АТАМАН,АТЛАНТИДА,АУКЦИОН,АФРИКА,АФИША,АФОРИЗМ,АФЁРА,АФРИКАНЕЦ,АФГАНИСТАН,АФРОДИТА,АФФЕКТ",
@@ -178,9 +216,10 @@ local RAW = {
 local DICT = {}
 local DICT_SEEN = {}
 local WORD_PRIO = {}
+local totalDictWords = 0
 
 local function addWordToDict(word, prio)
-    if not word then return false end
+    if not word or totalDictWords >= MAX_DICT_WORDS then return false end
     prio = prio or 2
     if DICT_SEEN[word] then
         if prio < (WORD_PRIO[word] or 3) then
@@ -195,6 +234,7 @@ local function addWordToDict(word, prio)
     DICT_SEEN[word] = true
     WORD_PRIO[word] = prio
     table.insert(DICT[first], word)
+    totalDictWords = totalDictWords + 1
     return true
 end
 
@@ -244,12 +284,9 @@ local function resetHistory(reason)
     end
 end
 
--- Состояние отправки (IDLE / CHECKING / REJECTED / ACCEPTED)
 local submitState = "IDLE"
 local lastWord = nil
 local lastPrefix = nil
-local lastTypedWord = nil
-local lastWasIntentionalTypo = false
 local lastAttemptTime = 0
 local lastFinishTime = 0
 local lastTypeTime = 0
@@ -390,12 +427,12 @@ else
     actionBtn.Size = UDim2.new(1, -124, 1, -8)
     actionBtn.Position = UDim2.new(0, 120, 0, 4)
     actionBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 40)
-    actionBtn.Text = "WordBot v33: ГОТОВ [Клик или Q / F2]"
+    actionBtn.Text = "WordBot v34: ГОТОВ [Клик или Q / F2]"
     actionBtn.TextSize = 13
     abCorner.CornerRadius = UDim.new(0, 8)
 end
 
--- Вкладка СЛОЖНОГО РЕЖИМА (правый угол, слова на ...А)
+-- Вкладка СЛОЖНОГО РЕЖИМА
 local hardTab = Instance.new("TextButton")
 hardTab.Name = "HardModeTab"
 hardTab.Font = Enum.Font.GothamBold
@@ -434,7 +471,7 @@ local function updateHardVisual()
 end
 updateHardVisual()
 
--- Вкладка МАТЫ (рядом со «Сложный»)
+-- Вкладка МАТЫ
 local profaneTab = Instance.new("TextButton")
 profaneTab.Name = "ProfaneModeTab"
 profaneTab.Font = Enum.Font.GothamBold
@@ -543,25 +580,27 @@ showStatus = function(txt, isErr)
     end
 end
 
--- Фоновая подгрузка больших словарей с GitHub (умные приоритеты 1 -> 2 -> 3)
+-- Фоновая подгрузка баз с GitHub (до 450 000 слов, включая CP1251-базу всех словоформ)
 task.spawn(function()
     local sources = {
         { url = "https://raw.githubusercontent.com/sorokinpf/russian_names/master/russian_names.txt", prio = 1 },
         { url = "https://gist.githubusercontent.com/helart/96225136a784f8a3987398be96456dce/raw", prio = 1 },
         { url = "https://raw.githubusercontent.com/Harrix/Russian-Nouns/main/dist/russian_nouns.txt", prio = 2 },
+        { url = "https://raw.githubusercontent.com/rominf/profanity-filter/master/profanity_filter/data/ru_profane_words.txt", prio = 2, isProfane = true },
         { url = "https://raw.githubusercontent.com/hingston/russian/master/100000-russian-words.txt", prio = 3 },
-        { url = "https://raw.githubusercontent.com/rominf/profanity-filter/master/profanity_filter/data/ru_profane_words.txt", prio = 2, isProfane = true }
+        { url = "https://raw.githubusercontent.com/danakt/russian-words/master/russian.txt", prio = 3, isCP1251 = true }
     }
 
     local added = 0
     for _, src in ipairs(sources) do
-        if _G.WordBotToken ~= myToken then return end
+        if _G.WordBotToken ~= myToken or totalDictWords >= MAX_DICT_WORDS then break end
         local ok, body = pcall(function() return game:HttpGet(src.url) end)
         if ok and type(body) == "string" and #body > 500 then
             local countInFile = 0
             for line in body:gmatch("[^\r\n]+") do
+                if totalDictWords >= MAX_DICT_WORDS then break end
                 local clean = line:gsub("^%s+", ""):gsub("%s+$", "")
-                local up = toUpperCyr(clean)
+                local up = src.isCP1251 and cp1251ToUpperCyr(clean) or toUpperCyr(clean)
                 if up then
                     if src.isProfane then
                         PROFANE_WORDS[up] = true
@@ -571,7 +610,7 @@ task.spawn(function()
                     end
                 end
                 countInFile = countInFile + 1
-                if countInFile % 5000 == 0 then
+                if countInFile % 8000 == 0 then
                     task.wait()
                 end
             end
@@ -579,7 +618,7 @@ task.spawn(function()
     end
 
     if added > 0 and _G.WordBotToken == myToken then
-        showStatus("Базы загружены: +" .. tostring(added) .. " слов!")
+        showStatus("База готова: " .. tostring(totalDictWords) .. " слов!")
     end
 end)
 
@@ -703,7 +742,6 @@ local function getActivePrefix()
     return nil
 end
 
--- Вспомогательная: получаем основной цвет плитки (сама или её родительский фрейм)
 local function getTileColor(tileObj)
     if not tileObj or not tileObj.Parent then return Color3.new(0, 0, 0) end
     local p = tileObj.Parent
@@ -722,8 +760,7 @@ local function handleServerRejection(isAlreadyUsed)
     end
     if lastWord then
         history[lastWord] = true
-        -- В вечный ЧС добавляем только если сервер сказал "нет слова" и не было нашей опечатки
-        if (not isAlreadyUsed) and (not lastWasIntentionalTypo) then
+        if not isAlreadyUsed then
             addToBlacklist(lastWord)
             showStatus("В ЧС навсегда: " .. lastWord, true)
         end
@@ -738,6 +775,7 @@ local function rememberWord(rawText)
     for _, trig in ipairs(RESET_TRIGGERS) do
         if lowCheck:find(trig, 1, true) then
             submitState = "IDLE"
+            restoreMobileControls()
             if countHistory() > 0 then
                 resetHistory("Авто-сброс (конец раунда)!")
             end
@@ -832,11 +870,12 @@ task.spawn(function()
             end
         elseif wasInMatch then
             missingTicks = missingTicks + 1
-            if missingTicks >= 8 then
+            if missingTicks >= 6 then
                 wasInMatch = false
                 missingTicks = 0
                 lastLongWord = nil
                 submitState = "IDLE"
+                restoreMobileControls()
                 if countHistory() > 0 then
                     resetHistory("Авто-сброс (встал со стула)!")
                 end
@@ -845,7 +884,7 @@ task.spawn(function()
     end
 end)
 
--- ── 6. ПОДБОР СЛОВА (с учётом Blacklist, Матов, Сложного [А] и приоритетов) ──
+-- ── 6. ПОДБОР СЛОВА ──
 local function pickWord(prefix, isRetry)
     local firstLetter = prefix:sub(1, 2)
     local pool = DICT[firstLetter]
@@ -923,21 +962,18 @@ local function pickWord(prefix, isRetry)
     end
 
     if hardMode then
-        -- Сложный режим: самые длинные и редкие словоформы (приоритет 3 -> 2 -> 1)
         table.sort(candidates, function(a, b)
             local la, lb = #a, #b
             if la ~= lb then return la > lb end
             return (WORD_PRIO[a] or 2) > (WORD_PRIO[b] or 2)
         end)
     elseif isRetry then
-        -- При повторе: надёжные существительные (приоритет 1 -> 2 -> 3)
         table.sort(candidates, function(a, b)
             local pa, pb = WORD_PRIO[a] or 2, WORD_PRIO[b] or 2
             if pa ~= pb then return pa < pb end
             return #a > #b
         end)
     else
-        -- Обычный режим: популярные и чистые слова (приоритет 1 -> 2 -> 3)
         table.sort(candidates, function(a, b)
             local pa, pb = WORD_PRIO[a] or 2, WORD_PRIO[b] or 2
             if pa ~= pb then return pa < pb end
@@ -951,14 +987,12 @@ local function pickWord(prefix, isRetry)
     return chosen
 end
 
--- ── 7. АВТООТВЕТ + МОНИТОР ОТВЕТА СЕРВЕРА ──
-local TYPO_CHARS = {"а","в","е","и","к","л","м","н","о","п","р","с","т","у"}
-
+-- ── 7. АВТООТВЕТ (0% ОШИБОК) + МОНИТОР ОТВЕТА СЕРВЕРА ──
 local function isStuckOnLastWord(rowText)
     if not lastPrefix or not rowText or (tick() - lastAttemptTime >= 20) then
         return false
     end
-    if rowText == lastWord or rowText == lastTypedWord then
+    if rowText == lastWord then
         return true
     end
     if rowText:sub(1, #lastPrefix) == lastPrefix and #rowText > #lastPrefix then
@@ -967,7 +1001,6 @@ local function isStuckOnLastWord(rowText)
     return false
 end
 
--- Наблюдатель за ответом сервера после отправки (цвет плиток / тряска / смена хода)
 local function startServerCheckMonitor(snapshotTiles, expectedWord)
     task.spawn(function()
         local initColors = {}
@@ -984,23 +1017,19 @@ local function startServerCheckMonitor(snapshotTiles, expectedWord)
             task.wait(0.08)
             local elapsed = tick() - startT
 
-            -- 1. Ход перешёл к другому игроку -> слово ПРИНЯТО
             if not isMyTurn() then
                 submitState = "ACCEPTED"
                 return
             end
 
-            -- 2. Читаем текущие плитки
             local curWord, curTiles = readTileData()
-            if not curWord or (curWord ~= expectedWord and curWord ~= lastWord and curWord ~= lastTypedWord and cyrLen(curWord) <= 6) then
-                -- Появился новый короткий префикс -> слово ПРИНЯТО
+            if not curWord or (curWord ~= expectedWord and curWord ~= lastWord and cyrLen(curWord) <= 6) then
                 if elapsed >= 0.15 then
                     submitState = "ACCEPTED"
                     return
                 end
             end
 
-            -- 3. Проверяем вспышку цвета (красный = отказ, зелёный = принято) и тряску
             if curTiles and #curTiles > 0 then
                 if initFirstX and math.abs(curTiles[1].x - initFirstX) >= 3 and curWord == expectedWord then
                     handleServerRejection(false)
@@ -1010,12 +1039,10 @@ local function startServerCheckMonitor(snapshotTiles, expectedWord)
                 for idx, t in ipairs(curTiles) do
                     local c = getTileColor(t.obj)
                     local ic = initColors[idx] or Color3.new(0, 0, 0)
-                    -- Резкое покраснение плитки
                     if c.R > 0.65 and c.R > c.G * 1.4 and c.R > c.B * 1.4 and (c.R - ic.R) > 0.12 then
                         handleServerRejection(false)
                         return
                     end
-                    -- Резкое позеленение плитки
                     if c.G > 0.60 and c.G > c.R * 1.3 and c.G > c.B * 1.3 and (c.G - ic.G) > 0.12 then
                         submitState = "ACCEPTED"
                         return
@@ -1023,7 +1050,6 @@ local function startServerCheckMonitor(snapshotTiles, expectedWord)
                 end
             end
 
-            -- 4. Предохранитель: если прошло 1.8с, ход всё ещё наш и слово висит -> отказ
             if elapsed >= 1.8 then
                 handleServerRejection(false)
                 return
@@ -1081,7 +1107,6 @@ local function doAutoAnswer()
         lastPrefix = prefix
         lastWord = word
         lastAttemptTime = tick()
-        lastWasIntentionalTypo = false
 
         local tag
         if profaneMode and hardMode then
@@ -1117,71 +1142,20 @@ local function doAutoAnswer()
             totalTime = isMobile and 0.75 or (0.95 + math.random() * 0.25)
         end
         local perChar = totalTime / math.max(#tail, 1)
-
         local midIndex = math.floor(#tail / 2)
-        local typoAt = nil
-        local typoCount = 0
-        local fixTypo = true
-
-        if #tail >= 3 and math.random() <= 0.40 then
-            typoAt = math.random(1, #tail - 1)
-            if not isRetry and math.random() <= 0.30 then
-                fixTypo = false
-                typoCount = 1
-                lastWasIntentionalTypo = true
-            else
-                fixTypo = true
-                typoCount = math.random(1, 2)
-            end
-        end
 
         for i, c in ipairs(tail) do
             if _G.WordBotToken ~= myToken then return end
-            local realChar = toLowerCyrChar(c)
-
-            if i == typoAt then
-                if fixTypo then
-                    for _ = 1, typoCount do
-                        if _G.WordBotToken ~= myToken then return end
-                        local wrong = TYPO_CHARS[math.random(1, #TYPO_CHARS)]
-                        if wrong == realChar then wrong = "о" end
-                        table.insert(typed, wrong)
-                        tb.Text = table.concat(typed)
-                        task.wait(perChar + math.random() * 0.05)
-                    end
-
-                    task.wait(0.18 + math.random() * 0.12)
-
-                    for _ = 1, typoCount do
-                        if _G.WordBotToken ~= myToken then return end
-                        table.remove(typed)
-                        tb.Text = table.concat(typed)
-                        task.wait(0.08 + math.random() * 0.05)
-                    end
-
-                    table.insert(typed, realChar)
-                    tb.Text = table.concat(typed)
-                else
-                    local wrong = TYPO_CHARS[math.random(1, #TYPO_CHARS)]
-                    if wrong == realChar then wrong = "о" end
-                    table.insert(typed, wrong)
-                    tb.Text = table.concat(typed)
-                end
-            else
-                table.insert(typed, realChar)
-                tb.Text = table.concat(typed)
-            end
-
+            table.insert(typed, toLowerCyrChar(c))
+            tb.Text = table.concat(typed)
             task.wait(perChar + (math.random() - 0.5) * perChar * 0.2)
 
             if i == midIndex and #tail >= 2 then
-                task.wait(0.5)
+                task.wait(0.45)
             end
         end
 
-        lastTypedWord = toUpperCyr(prefix .. table.concat(typed)) or word
         local snapWord, snapTiles = readTileData()
-
         task.wait(0.06)
         submitState = "CHECKING"
         tb:ReleaseFocus(true)
@@ -1196,7 +1170,7 @@ local function doAutoAnswer()
             end)
         end
 
-        startServerCheckMonitor(snapTiles, snapWord or lastTypedWord)
+        startServerCheckMonitor(snapTiles, snapWord or word)
         showStatus("Проверка: " .. word .. " (" .. tostring(countHistory()) .. ")")
     end)
 
@@ -1208,12 +1182,11 @@ local function doAutoAnswer()
     end
 end
 
--- ── 8. ФОНОВЫЙ АВТО-ХОД (работает строго по реальному статусу сервера) ──
+-- ── 8. ФОНОВЫЙ АВТО-ХОД ──
 task.spawn(function()
     while _G.WordBotToken == myToken do
         task.wait(0.20)
         if autoMode and not _G.WordBotGlobalTyping and isMyTurn() then
-            -- Пока сервер проверяет слово — бот спокойно ждёт
             if submitState == "CHECKING" then
                 continue
             end
@@ -1260,6 +1233,7 @@ end
 attachTap(actionBtn, doAutoAnswer)
 attachTap(resetBtn, function()
     submitState = "IDLE"
+    restoreMobileControls()
     resetHistory("Память сброшена!")
 end)
 attachTap(autoBtn, function()
@@ -1290,4 +1264,4 @@ addConn(UIS.InputBegan:Connect(function(input)
     end
 end))
 
-print("[WordGameBot v33] Запущен! Режим: " .. (isMobile and "ТЕЛЕФОН" or "ПК"))
+print("[WordGameBot v34] Запущен! Режим: " .. (isMobile and "ТЕЛЕФОН" or "ПК"))
